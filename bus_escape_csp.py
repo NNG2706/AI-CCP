@@ -290,8 +290,8 @@ class BusEscapeCSP:
            - Reduces branching factor by eliminating hopeless paths quickly
         
         Why MRV Reduces Search Space:
-        - Without MRV: might explore many moves of unconstrained buses before discovering
-          that a highly constrained bus has no valid moves (dead end)
+        - Without MRV: might explore many moves of unconstrained buses before
+          discovering that a highly constrained bus has no valid moves (dead end)
         - With MRV: discover dead ends immediately by checking constrained buses first
         - Effectively prunes large portions of search tree
         - Reduces time complexity from O(b^d) to approximately O(b'^d) where b' << b
@@ -330,7 +330,7 @@ class BusEscapeCSP:
            - Increases likelihood of finding solution without backtracking
         
         Why LCV Minimizes Backtracking:
-        - Without LCV: might choose move that severely constrains other buses
+        - Without LCV: might choose move that severely constrains other buses,
           leading to failure later and requiring backtracking
         - With LCV: prefer moves leaving maximum options for others
         - Acts as "look-ahead" to avoid choices that will cause problems
