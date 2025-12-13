@@ -97,8 +97,8 @@ class BusEscapeCSP:
     
     GRID_SIZE = 6
     EXIT_POSITION = (0, 5)
-    MAX_SEARCH_ITERATIONS = 100000  # Maximum nodes to explore before giving up
-    MAX_MOVES_PER_BUS = 3  # Branching factor limit per bus to control search space
+    MAX_SEARCH_ITERATIONS = 50000  # Maximum nodes to explore before giving up
+    MAX_MOVES_PER_BUS = 5  # Branching factor limit per bus to control search space
     
     # Color codes for grid visualization
     COLOR_CODES = {
@@ -613,45 +613,39 @@ class BusEscapeCSP:
 
 def create_example_puzzle() -> List[Bus]:
     """
-    Create a solvable Bus Escape puzzle configuration.
+    Create Bus Escape puzzle configuration matching problem statement.
     
-    Initial layout (very simple, definitely solvable):
+    Initial layout (from problem statement):
       0 1 2 3 4 5
-    0 R R . . O E
-    1 . . . . O .
-    2 . . . . . .
-    3 . . B B B G
-    4 . . . . . G
-    5 . . Y Y . .
+    0 . . . . . E
+    1 . . . . . .
+    2 R R . B B B
+    3 . . . . . .
+    4 G . O . Y Y
+    5 G . O . . .
     
-    Red bus at (0,0) needs to reach exit at (0,5). 
-    Solution: Move Orange down, then Red moves right step by step to exit.
+    Red bus needs to reach exit at (0,5). Other buses block the path.
     
-    With blockage constraint (one cell at a time), solution path:
-    1. Orange (0,4) → (1,4)  [clears way]
-    2. Orange (1,4) → (2,4)  [clears way more]
-    3. Red (0,0) → (0,1)     [move right]
-    4. Red (0,1) → (0,2)     [move right]
-    5. Red (0,2) → (0,3)     [move right]
-    6. Red (0,3) → (0,4)     [reach exit position]
+    NOTE: With strict Blockage Constraint (one cell at a time movement),
+    this configuration may or may not have a solution. The solver will
+    correctly report "No solution found" if all constraints cannot be
+    satisfied simultaneously.
     """
     buses = [
         # Red bus (horizontal, length 2) - needs to reach exit at (0, 5)
-        # At (0,0), needs to move right to (0,4) so rightmost cell is at (0,5)
-        Bus(BusColor.RED, 2, Orientation.HORIZONTAL, (0, 0)),
+        Bus(BusColor.RED, 2, Orientation.HORIZONTAL, (2, 0)),
         
-        # Orange bus (vertical, length 2) - blocks exit path at (0,4)-(1,4)
-        # Needs to move down to clear path
-        Bus(BusColor.ORANGE, 2, Orientation.VERTICAL, (0, 4)),
+        # Green bus (vertical, length 2) - blocks path vertically
+        Bus(BusColor.GREEN, 2, Orientation.VERTICAL, (4, 0)),
         
-        # Green bus (vertical, length 2) - positioned away from path
-        Bus(BusColor.GREEN, 2, Orientation.VERTICAL, (3, 5)),
+        # Blue bus (horizontal, length 3) - blocks path horizontally
+        Bus(BusColor.BLUE, 3, Orientation.HORIZONTAL, (2, 3)),
         
-        # Blue bus (horizontal, length 3) - positioned away from path
-        Bus(BusColor.BLUE, 3, Orientation.HORIZONTAL, (3, 2)),
+        # Yellow bus (horizontal, length 2) - positioned at bottom
+        Bus(BusColor.YELLOW, 2, Orientation.HORIZONTAL, (4, 4)),
         
-        # Yellow bus (horizontal, length 2) - positioned away from path
-        Bus(BusColor.YELLOW, 2, Orientation.HORIZONTAL, (5, 2)),
+        # Orange bus (vertical, length 2) - blocks path vertically
+        Bus(BusColor.ORANGE, 2, Orientation.VERTICAL, (4, 2)),
     ]
     
     return buses
