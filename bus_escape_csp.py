@@ -19,7 +19,7 @@ CONSTRAINTS:
 3. Boundary Constraint: All bus cells must be within 6×6 grid (0 ≤ row, col < 6)
 4. Exit Constraint: Red Bus must reach exit at (0,5) - this is the goal state
 5. Passenger Matching Constraint: Group A→Red, Group B→Yellow, Group C→Green
-6. Blockage Constraint: Buses cannot move through each other (enforced via collision)
+6. Blockage Constraint: Buses move ONE CELL at a time (adjacent positions only), cannot jump over obstacles
 
 HEURISTICS:
 - MRV (Minimum Remaining Values): Select bus with fewest legal moves to reduce search space
@@ -98,7 +98,7 @@ class BusEscapeCSP:
     GRID_SIZE = 6
     EXIT_POSITION = (0, 5)
     MAX_SEARCH_ITERATIONS = 50000  # Maximum nodes to explore before giving up
-    MAX_MOVES_PER_BUS = 5  # Branching factor limit per bus to control search space
+    MAX_MOVES_PER_BUS = 5  # Max moves to try per bus at each BFS node (branching factor control)
     
     # Color codes for grid visualization
     COLOR_CODES = {
@@ -206,9 +206,9 @@ class BusEscapeCSP:
         2. Collision Constraint: cells(bus) ∩ cells(other_buses) = ∅
         
         Blockage Constraint:
-        - Implicitly enforced: if bus cannot occupy a position due to collision,
-          it cannot move through that position either
-        - No need for separate path checking since we check each intermediate position
+        - Explicitly enforced by restricting moves to adjacent positions only
+        - This method (get_legal_moves) only generates one-cell-away positions
+        - Prevents buses from jumping over or teleporting through obstacles
         
         Returns:
             True if position satisfies all constraints, False otherwise
@@ -478,8 +478,9 @@ class BusEscapeCSP:
                 # Apply LCV to order moves
                 ordered_moves = self.apply_lcv_heuristic(current_buses, bus_to_move, legal_moves)
                 
-                # Try top moves (limit branching factor per bus to prevent exponential explosion)
-                # MAX_MOVES_PER_BUS controls the number of moves tried per bus at each node
+                # Try top LCV-ordered moves (limit branching to prevent exponential explosion)
+                # With blockage constraint, each bus typically has ≤2 adjacent moves anyway
+                # MAX_MOVES_PER_BUS provides additional safety limit for complex scenarios
                 for move in ordered_moves[:self.MAX_MOVES_PER_BUS]:
                     # Create new state
                     new_buses = [b.copy() for b in current_buses]
