@@ -8,10 +8,9 @@ Author: AI-CCP Project
 """
 
 import time
-from typing import List, Tuple, Set, Dict, Optional, Deque
+from typing import List, Tuple, Set, Dict, Optional
 from dataclasses import dataclass
 from enum import Enum
-from copy import deepcopy
 from collections import deque
 
 
@@ -70,6 +69,8 @@ class BusEscapeCSP:
     
     GRID_SIZE = 6
     EXIT_POSITION = (0, 5)
+    MAX_SEARCH_ITERATIONS = 50000  # Maximum nodes to explore before giving up
+    MAX_MOVES_PER_BUS = 2  # Branching factor limit per bus to control search space
     
     def __init__(self, buses: List[Bus]):
         """Initialize the CSP solver."""
@@ -238,9 +239,7 @@ class BusEscapeCSP:
         queue = deque([(self.initial_buses, [self.initial_buses])])
         visited = {self.get_state_hash(self.initial_buses)}
         
-        max_iterations = 50000  # Prevent infinite search
-        
-        while queue and self.nodes_explored < max_iterations:
+        while queue and self.nodes_explored < self.MAX_SEARCH_ITERATIONS:
             current_buses, path = queue.popleft()
             self.nodes_explored += 1
             
@@ -274,7 +273,7 @@ class BusEscapeCSP:
                 ordered_moves = self.apply_lcv_heuristic(current_buses, bus_to_move, legal_moves)
                 
                 # Try top moves (limit branching factor per bus)
-                for move in ordered_moves[:2]:
+                for move in ordered_moves[:self.MAX_MOVES_PER_BUS]:
                     # Create new state
                     new_buses = [b.copy() for b in current_buses]
                     moving_bus = next(b for b in new_buses if b.color == bus_to_move)
@@ -412,7 +411,7 @@ def create_example_puzzle() -> List[Bus]:
     
     Initial layout:
       0 1 2 3 4 5
-    0 R R . . O E  (Orange blocks at col 4-5)
+    0 R R . . O E  (Orange blocks rows 0-1 at col 4)
     1 . . . . O .
     2 . . . . . .  (Empty space to move Orange down)
     3 B B . . . .
