@@ -159,47 +159,28 @@ class BusEscapeCSP:
             return red_bus.position[0] == self.EXIT_POSITION[0] and rightmost_col == self.EXIT_POSITION[1]
         return False
     
-    def apply_mrv_heuristic(self, buses: List[Bus]) -> BusColor:
+    def get_bus_priority_by_mrv(self, buses: List[Bus]) -> List[Tuple[BusColor, int]]:
         """
-        Select bus to move using MRV heuristic.
-        Returns bus with fewest legal moves (most constrained).
-        Prioritizes Red bus if it can move towards goal.
+        Order buses by MRV heuristic (fewest legal moves first).
+        Returns list of (bus_color, num_legal_moves) tuples sorted by constraint level.
+        
+        MRV Implementation:
+        - Counts legal moves for each bus
+        - Sorts buses by number of legal moves (ascending)
+        - Most constrained buses (fewest moves) come first
+        - This helps detect failures early and reduces search space
         """
-        red_bus = next(b for b in buses if b.color == BusColor.RED)
-        
-        # Check if Red can move right on correct row
-        if red_bus.position[0] == self.EXIT_POSITION[0]:
-            red_moves = self.get_legal_moves(buses, BusColor.RED)
-            rightward_moves = [m for m in red_moves if m[1] > red_bus.position[1]]
-            if rightward_moves:
-                self.mrv_decisions.append({
-                    'bus': 'Red (prioritized)',
-                    'legal_moves': len(red_moves),
-                    'reason': 'Can move towards goal'
-                })
-                return BusColor.RED
-        
-        # MRV: Select bus with minimum legal moves
-        min_moves = float('inf')
-        selected_color = None
-        all_move_counts = {}
+        bus_moves = []
         
         for bus in buses:
-            moves = self.get_legal_moves(buses, bus.color)
-            all_move_counts[bus.color.value] = len(moves)
-            
-            if len(moves) > 0 and len(moves) < min_moves:
-                min_moves = len(moves)
-                selected_color = bus.color
+            legal_moves = self.get_legal_moves(buses, bus.color)
+            bus_moves.append((bus.color, len(legal_moves)))
         
-        if selected_color:
-            self.mrv_decisions.append({
-                'bus': selected_color.value,
-                'legal_moves': min_moves,
-                'all_counts': all_move_counts
-            })
+        # Sort by number of moves (ascending = most constrained first)
+        # This is the core of MRV heuristic
+        bus_moves.sort(key=lambda x: x[1])
         
-        return selected_color if selected_color else BusColor.RED
+        return bus_moves
     
     def apply_lcv_heuristic(self, buses: List[Bus], bus_color: BusColor, moves: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
         """
@@ -268,21 +249,32 @@ class BusEscapeCSP:
                 self.solution_path = path
                 return True
             
-            # Try moving each bus (BFS explores all possibilities)
-            for bus in current_buses:
-                bus_to_move = bus.color
+            # Apply MRV heuristic to order buses by constraint level
+            # Most constrained buses (fewest legal moves) are tried first
+            bus_priority = self.get_bus_priority_by_mrv(current_buses)
+            
+            # Record MRV decision for this node
+            if bus_priority and bus_priority[0][1] > 0:
+                self.mrv_decisions.append({
+                    'bus': bus_priority[0][0].value,
+                    'legal_moves': bus_priority[0][1],
+                    'all_counts': {color.value: count for color, count in bus_priority},
+                    'ordering': [color.value for color, _ in bus_priority]
+                })
+            
+            # Try moving buses in MRV order (most constrained first)
+            for bus_to_move, num_moves in bus_priority:
+                if num_moves == 0:
+                    continue
                 
                 # Get legal moves for this bus
                 legal_moves = self.get_legal_moves(current_buses, bus_to_move)
                 
-                if not legal_moves:
-                    continue
-                
                 # Apply LCV to order moves
                 ordered_moves = self.apply_lcv_heuristic(current_buses, bus_to_move, legal_moves)
                 
-                # Try top moves
-                for move in ordered_moves[:2]:  # Limit branching factor per bus
+                # Try top moves (limit branching factor per bus)
+                for move in ordered_moves[:2]:
                     # Create new state
                     new_buses = [b.copy() for b in current_buses]
                     moving_bus = next(b for b in new_buses if b.color == bus_to_move)
@@ -373,9 +365,11 @@ class BusEscapeCSP:
         if self.mrv_decisions:
             print("Sample MRV decisions (first 5):")
             for i, decision in enumerate(self.mrv_decisions[:5], 1):
-                print(f"  Decision {i}: Selected {decision['bus']} with {decision['legal_moves']} legal moves")
+                print(f"  Decision {i}: Most constrained bus is {decision['bus']} with {decision['legal_moves']} legal moves")
                 if 'all_counts' in decision:
                     print(f"    All move counts: {decision['all_counts']}")
+                if 'ordering' in decision:
+                    print(f"    Bus ordering (most to least constrained): {decision['ordering']}")
         print()
         
         print("=" * 60)
