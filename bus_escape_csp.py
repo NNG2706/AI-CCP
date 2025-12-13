@@ -39,11 +39,13 @@ class Bus:
         length: Length of the bus (number of cells it occupies)
         orientation: HORIZONTAL or VERTICAL
         position: Top-left position as (row, col)
+        passenger_group: Assigned passenger group (A, B, or C) - optional
     """
     color: BusColor
     length: int
     orientation: Orientation
     position: Tuple[int, int]
+    passenger_group: Optional[str] = None
     
     def get_occupied_cells(self) -> Set[Tuple[int, int]]:
         """Returns set of all cells occupied by this bus."""
@@ -61,7 +63,7 @@ class Bus:
     
     def copy(self) -> 'Bus':
         """Create a deep copy of this bus"""
-        return Bus(self.color, self.length, self.orientation, self.position)
+        return Bus(self.color, self.length, self.orientation, self.position, self.passenger_group)
 
 
 class BusEscapeCSP:
@@ -81,14 +83,26 @@ class BusEscapeCSP:
         BusColor.ORANGE: 'O'
     }
     
+    # Passenger assignment constraints
+    PASSENGER_ASSIGNMENTS = {
+        'A': BusColor.RED,
+        'B': BusColor.YELLOW,
+        'C': BusColor.GREEN
+    }
+    
     def __init__(self, buses: List[Bus]):
         """Initialize the CSP solver."""
         self.initial_buses = [bus.copy() for bus in buses]
         self.buses = [bus.copy() for bus in buses]
         self.bus_dict = {bus.color: bus for bus in self.buses}
         
+        # Assign passengers according to constraints
+        self._assign_passengers()
+        
         # Statistics
         self.nodes_explored = 0
+        self.mrv_activations = 0  # Count MRV heuristic activations
+        self.lcv_calculations = 0  # Count LCV heuristic calculations
         self.mrv_decisions = []
         self.lcv_decisions = []
         self.solution_path = []
@@ -97,6 +111,16 @@ class BusEscapeCSP:
         # Cache for domains
         self.domain_cache: Dict[BusColor, List[Tuple[int, int]]] = {}
         self._initialize_domains()
+    
+    def _assign_passengers(self) -> None:
+        """Assign passenger groups to buses according to constraints"""
+        for group, bus_color in self.PASSENGER_ASSIGNMENTS.items():
+            if bus_color in self.bus_dict:
+                self.bus_dict[bus_color].passenger_group = group
+                # Also update in initial_buses
+                for bus in self.initial_buses:
+                    if bus.color == bus_color:
+                        bus.passenger_group = group
     
     def _initialize_domains(self) -> None:
         """Initialize domains for all buses"""
@@ -180,6 +204,8 @@ class BusEscapeCSP:
         - Most constrained buses (fewest moves) come first
         - This helps detect failures early and reduces search space
         """
+        self.mrv_activations += 1  # Count MRV activation
+        
         bus_moves = []
         
         for bus in buses:
@@ -198,6 +224,8 @@ class BusEscapeCSP:
         Prefers moves that leave more options for other buses.
         For Red bus on goal row, prioritizes rightward movement.
         """
+        self.lcv_calculations += 1  # Count LCV calculation
+        
         bus = next(b for b in buses if b.color == bus_color)
         
         # Special handling for Red bus on goal row
@@ -317,44 +345,54 @@ class BusEscapeCSP:
         return result
     
     def print_solution(self) -> None:
-        """Print complete solution with statistics"""
+        """Print complete solution with statistics in required format"""
         elapsed_time = time.time() - self.start_time
         
-        print("=" * 60)
-        print("BUS ESCAPE PUZZLE - CSP SOLVER (OPTIMIZED)")
-        print("=" * 60)
-        print()
-        
-        print("INITIAL STATE:")
+        print("Initial State:")
         print(self.visualize_grid(self.initial_buses))
         
         if not self.solution_path:
             print("No solution found!")
+            print("\nThis could be because:")
+            print("- The puzzle configuration has no valid solution")
+            print("- The search space is too large (exceeded MAX_SEARCH_ITERATIONS)")
+            print("- Constraints are too restrictive")
             return
         
-        print(f"SOLUTION FOUND! ({len(self.solution_path)} states)")
-        print()
+        print("Solution found:")
         
-        # Display each state
-        for idx, buses_state in enumerate(self.solution_path):
-            print(f"State {idx}:")
-            print(self.visualize_grid(buses_state))
+        # Display each move with proper formatting
+        move_count = 0
+        for idx in range(1, len(self.solution_path)):
+            prev_state = self.solution_path[idx - 1]
+            current_state = self.solution_path[idx]
             
-            # Show what changed
-            if idx > 0:
-                prev_state = self.solution_path[idx - 1]
-                for i, bus in enumerate(buses_state):
-                    prev_bus = prev_state[i]
-                    if bus.position != prev_bus.position:
-                        print(f"  -> {bus.color.value} bus moved from {prev_bus.position} to {bus.position}")
-            print()
+            # Find which bus moved
+            for i, bus in enumerate(current_state):
+                prev_bus = prev_state[i]
+                if bus.position != prev_bus.position:
+                    move_count += 1
+                    from_pos = prev_bus.position
+                    to_pos = bus.position
+                    
+                    # Check if this is the final move to exit
+                    if bus.color == BusColor.RED and self.is_goal_state(current_state):
+                        print(f"Move {move_count}: {bus.color.value} Bus reaches exit at {self.EXIT_POSITION}")
+                    else:
+                        print(f"Move {move_count}: {bus.color.value} Bus moves from {from_pos} to {to_pos}")
+                    
+                    print(self.visualize_grid(current_state))
         
-        print("=" * 60)
-        print("STATISTICS")
-        print("=" * 60)
-        print(f"Solution length: {len(self.solution_path)} states")
+        print("\nPassenger Assignments:")
+        for group in sorted(self.PASSENGER_ASSIGNMENTS.keys()):
+            bus_color = self.PASSENGER_ASSIGNMENTS[group]
+            print(f"Group {group} → {bus_color.value} Bus")
+        
+        print("\nStatistics:")
+        print(f"Total moves: {move_count}")
         print(f"Nodes explored: {self.nodes_explored}")
-        print(f"Time elapsed: {elapsed_time:.4f} seconds")
+        print(f"MRV activations: {self.mrv_activations}")
+        print(f"LCV calculations: {self.lcv_calculations}")
         print()
         
         print("=" * 60)
@@ -399,6 +437,7 @@ class BusEscapeCSP:
         print("  - Chooses moves that constrain other buses the least")
         print("  - Increases likelihood of finding solution efficiently")
         print()
+        print(f"Time elapsed: {elapsed_time:.4f} seconds")
         print(f"Average time per node: {elapsed_time / max(self.nodes_explored, 1):.6f} seconds")
         print("=" * 60)
 
@@ -407,34 +446,32 @@ def create_example_puzzle() -> List[Bus]:
     """
     Create a solvable Bus Escape puzzle configuration.
     
-    This puzzle requires:
-    1. Move Orange down (from blocking the exit)
-    2. Move Red right to the exit
-    
-    Initial layout:
+    Initial layout (matches problem statement):
       0 1 2 3 4 5
-    0 R R . . O E  (Orange blocks rows 0-1 at col 4)
-    1 . . . . O .
-    2 . . . . . .  (Empty space to move Orange down)
-    3 B B . . . .
-    4 . . . . . .
-    5 . . Y Y . .
+    0 . . . . . E
+    1 . . . . . .
+    2 R R . B B B
+    3 . . . . . .
+    4 G . O . Y Y
+    5 G . O . . .
+    
+    Red bus needs to reach exit at (0,5). Other buses must be moved to create a path.
     """
     buses = [
         # Red bus (horizontal, length 2) - needs to reach exit at (0, 5)
-        Bus(BusColor.RED, 2, Orientation.HORIZONTAL, (0, 0)),
+        Bus(BusColor.RED, 2, Orientation.HORIZONTAL, (2, 0)),
         
-        # Orange bus (vertical, length 2) - blocks exit at (0,4)-(1,4)
-        Bus(BusColor.ORANGE, 2, Orientation.VERTICAL, (0, 4)),
+        # Green bus (vertical, length 2) - blocks path vertically
+        Bus(BusColor.GREEN, 2, Orientation.VERTICAL, (4, 0)),
         
-        # Green bus (vertical, length 2) - away from critical path
-        Bus(BusColor.GREEN, 2, Orientation.VERTICAL, (3, 5)),
+        # Blue bus (horizontal, length 3) - blocks path horizontally
+        Bus(BusColor.BLUE, 3, Orientation.HORIZONTAL, (2, 3)),
         
-        # Blue bus (horizontal, length 2) - away from critical path
-        Bus(BusColor.BLUE, 2, Orientation.HORIZONTAL, (3, 0)),
+        # Yellow bus (horizontal, length 2) - positioned at bottom
+        Bus(BusColor.YELLOW, 2, Orientation.HORIZONTAL, (4, 4)),
         
-        # Yellow bus (horizontal, length 2) - away from critical path
-        Bus(BusColor.YELLOW, 2, Orientation.HORIZONTAL, (5, 2)),
+        # Orange bus (vertical, length 2) - blocks path vertically
+        Bus(BusColor.ORANGE, 2, Orientation.VERTICAL, (4, 2)),
     ]
     
     return buses
@@ -442,9 +479,6 @@ def create_example_puzzle() -> List[Bus]:
 
 def main():
     """Main execution function"""
-    print("Initializing Bus Escape Puzzle CSP Solver (Optimized)...")
-    print()
-    
     # Create puzzle
     buses = create_example_puzzle()
     
@@ -452,9 +486,6 @@ def main():
     csp = BusEscapeCSP(buses)
     
     # Solve puzzle
-    print("Starting BFS with MRV and LCV heuristics...")
-    print()
-    
     result = csp.solve_bfs()
     
     # Display results
