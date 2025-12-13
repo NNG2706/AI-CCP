@@ -72,6 +72,15 @@ class BusEscapeCSP:
     MAX_SEARCH_ITERATIONS = 50000  # Maximum nodes to explore before giving up
     MAX_MOVES_PER_BUS = 2  # Branching factor limit per bus to control search space
     
+    # Color codes for grid visualization
+    COLOR_CODES = {
+        BusColor.RED: 'R',
+        BusColor.GREEN: 'G',
+        BusColor.BLUE: 'B',
+        BusColor.YELLOW: 'Y',
+        BusColor.ORANGE: 'O'
+    }
+    
     def __init__(self, buses: List[Bus]):
         """Initialize the CSP solver."""
         self.initial_buses = [bus.copy() for bus in buses]
@@ -272,7 +281,8 @@ class BusEscapeCSP:
                 # Apply LCV to order moves
                 ordered_moves = self.apply_lcv_heuristic(current_buses, bus_to_move, legal_moves)
                 
-                # Try top moves (limit branching factor per bus)
+                # Try top moves (limit branching factor per bus to prevent exponential explosion)
+                # MAX_MOVES_PER_BUS controls the number of moves tried per bus at each node
                 for move in ordered_moves[:self.MAX_MOVES_PER_BUS]:
                     # Create new state
                     new_buses = [b.copy() for b in current_buses]
@@ -291,16 +301,8 @@ class BusEscapeCSP:
         """Create visual representation of grid with buses."""
         grid = [['.' for _ in range(self.GRID_SIZE)] for _ in range(self.GRID_SIZE)]
         
-        color_codes = {
-            BusColor.RED: 'R',
-            BusColor.GREEN: 'G',
-            BusColor.BLUE: 'B',
-            BusColor.YELLOW: 'Y',
-            BusColor.ORANGE: 'O'
-        }
-        
         for bus in buses:
-            code = color_codes[bus.color]
+            code = self.COLOR_CODES[bus.color]
             for cell in bus.get_occupied_cells():
                 row, col = cell
                 grid[row][col] = code
