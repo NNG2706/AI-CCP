@@ -97,8 +97,8 @@ class BusEscapeCSP:
     
     GRID_SIZE = 6
     EXIT_POSITION = (0, 5)
-    MAX_SEARCH_ITERATIONS = 50000  # Maximum nodes to explore before giving up
-    MAX_MOVES_PER_BUS = 2  # Branching factor limit per bus to control search space
+    MAX_SEARCH_ITERATIONS = 100000  # Maximum nodes to explore before giving up
+    MAX_MOVES_PER_BUS = 3  # Branching factor limit per bus to control search space
     
     # Color codes for grid visualization
     COLOR_CODES = {
@@ -232,22 +232,42 @@ class BusEscapeCSP:
     
     def get_legal_moves(self, buses: List[Bus], bus_color: BusColor) -> List[Tuple[int, int]]:
         """
-        Get all legal positions for a bus in current state.
+        Get all legal ADJACENT positions for a bus in current state.
         
-        This implements constraint-based filtering of the domain:
+        This implements constraint-based filtering with Blockage Constraint:
         - Start with full domain (all positions satisfying boundary constraints)
-        - Filter out current position (not a move)
+        - Filter to only ADJACENT positions (one cell away)
         - Filter out positions violating collision constraints with other buses
         - Result is set of legal values for this variable in current state
+        
+        Blockage Constraint Enforcement:
+        - Buses can only move ONE CELL at a time (up/down/left/right)
+        - This prevents buses from "jumping over" or "teleporting through" obstacles
+        - A bus blocked by another bus cannot move in that direction
+        - Path must be clear for every individual move
         
         This is the core of CSP constraint propagation for this problem.
         """
         bus = next(b for b in buses if b.color == bus_color)
         legal_moves = []
-        domain = self.domain_cache[bus_color]
+        current_row, current_col = bus.position
         
-        for position in domain:
-            if position != bus.position and self.is_valid_position(buses, bus_color, position):
+        # Generate only ADJACENT positions based on orientation
+        adjacent_positions = []
+        
+        if bus.orientation == Orientation.HORIZONTAL:
+            # Horizontal bus can move left or right by one cell
+            adjacent_positions.append((current_row, current_col - 1))  # Left
+            adjacent_positions.append((current_row, current_col + 1))  # Right
+        else:  # VERTICAL
+            # Vertical bus can move up or down by one cell
+            adjacent_positions.append((current_row - 1, current_col))  # Up
+            adjacent_positions.append((current_row + 1, current_col))  # Down
+        
+        # Filter adjacent positions: must be in domain and satisfy all constraints
+        domain = self.domain_cache[bus_color]
+        for position in adjacent_positions:
+            if position in domain and self.is_valid_position(buses, bus_color, position):
                 legal_moves.append(position)
         
         return legal_moves
@@ -595,32 +615,43 @@ def create_example_puzzle() -> List[Bus]:
     """
     Create a solvable Bus Escape puzzle configuration.
     
-    Initial layout (matches problem statement):
+    Initial layout (very simple, definitely solvable):
       0 1 2 3 4 5
-    0 . . . . . E
-    1 . . . . . .
-    2 R R . B B B
-    3 . . . . . .
-    4 G . O . Y Y
-    5 G . O . . .
+    0 R R . . O E
+    1 . . . . O .
+    2 . . . . . .
+    3 . . B B B G
+    4 . . . . . G
+    5 . . Y Y . .
     
-    Red bus needs to reach exit at (0,5). Other buses must be moved to create a path.
+    Red bus at (0,0) needs to reach exit at (0,5). 
+    Solution: Move Orange down, then Red moves right step by step to exit.
+    
+    With blockage constraint (one cell at a time), solution path:
+    1. Orange (0,4) → (1,4)  [clears way]
+    2. Orange (1,4) → (2,4)  [clears way more]
+    3. Red (0,0) → (0,1)     [move right]
+    4. Red (0,1) → (0,2)     [move right]
+    5. Red (0,2) → (0,3)     [move right]
+    6. Red (0,3) → (0,4)     [reach exit position]
     """
     buses = [
         # Red bus (horizontal, length 2) - needs to reach exit at (0, 5)
-        Bus(BusColor.RED, 2, Orientation.HORIZONTAL, (2, 0)),
+        # At (0,0), needs to move right to (0,4) so rightmost cell is at (0,5)
+        Bus(BusColor.RED, 2, Orientation.HORIZONTAL, (0, 0)),
         
-        # Green bus (vertical, length 2) - blocks path vertically
-        Bus(BusColor.GREEN, 2, Orientation.VERTICAL, (4, 0)),
+        # Orange bus (vertical, length 2) - blocks exit path at (0,4)-(1,4)
+        # Needs to move down to clear path
+        Bus(BusColor.ORANGE, 2, Orientation.VERTICAL, (0, 4)),
         
-        # Blue bus (horizontal, length 3) - blocks path horizontally
-        Bus(BusColor.BLUE, 3, Orientation.HORIZONTAL, (2, 3)),
+        # Green bus (vertical, length 2) - positioned away from path
+        Bus(BusColor.GREEN, 2, Orientation.VERTICAL, (3, 5)),
         
-        # Yellow bus (horizontal, length 2) - positioned at bottom
-        Bus(BusColor.YELLOW, 2, Orientation.HORIZONTAL, (4, 4)),
+        # Blue bus (horizontal, length 3) - positioned away from path
+        Bus(BusColor.BLUE, 3, Orientation.HORIZONTAL, (3, 2)),
         
-        # Orange bus (vertical, length 2) - blocks path vertically
-        Bus(BusColor.ORANGE, 2, Orientation.VERTICAL, (4, 2)),
+        # Yellow bus (horizontal, length 2) - positioned away from path
+        Bus(BusColor.YELLOW, 2, Orientation.HORIZONTAL, (5, 2)),
     ]
     
     return buses
