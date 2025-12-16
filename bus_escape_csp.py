@@ -34,7 +34,6 @@ Author: AI-CCP Project
 """
 
 import time
-import random
 from typing import List, Tuple, Set, Dict, Optional
 from dataclasses import dataclass
 from enum import Enum
@@ -1188,7 +1187,6 @@ def create_complex_solvable_puzzle() -> List[Bus]:
         Bus(BusColor.YELLOW, 2, Orientation.HORIZONTAL, (4, 4)),
     ]
     
-    return buses
     return buses
 
 
