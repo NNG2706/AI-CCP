@@ -997,14 +997,20 @@ class EnhancedBusEscapeCSP(BusEscapeCSP):
                 # Red is blocked - identify and clear blocking buses
                 print(f"\nPath Analysis:")
                 print(f"  Red bus at {red_bus.position} needs to reach {self.EXIT_POSITION}")
-                print(f"  Next required cell: {next_target}")
+                print(f"  Next required position: {next_target}")
                 
-                # Find which bus(es) block the next cell
+                # Find which bus(es) would collide if Red moves to next_target
+                temp_red = red_bus.copy()
+                temp_red.position = next_target
+                new_red_cells = temp_red.get_occupied_cells()
+                
                 blocking_buses = []
                 for bus in self.buses:
-                    if bus.color != BusColor.RED and next_target in bus.get_occupied_cells():
-                        blocking_buses.append(bus)
-                        print(f"  Blocking bus: {bus.color.value} at {bus.position}")
+                    if bus.color != BusColor.RED:
+                        bus_cells = bus.get_occupied_cells()
+                        if new_red_cells & bus_cells:  # Check for collision
+                            blocking_buses.append(bus)
+                            print(f"  Blocking bus: {bus.color.value} at {bus.position} [cells: {bus_cells}]")
                 
                 if not blocking_buses:
                     print("  Error: No blocking bus found but move invalid")
@@ -1029,7 +1035,7 @@ class EnhancedBusEscapeCSP(BusEscapeCSP):
                             move_count += 1
                             
                             print(f"\nAction: Move {blocking_bus.color.value} bus to clear path")
-                            print(f"Reason: {blocking_bus.color.value} occupies {next_target}, blocking Red's path")
+                            print(f"Reason: {blocking_bus.color.value} blocks Red's path to {next_target}")
                             print(f"Solution: Move {blocking_bus.color.value} from {old_pos} to {move}")
                             
                             self.print_constraint_verification(blocking_bus, old_pos, move, move_count)
@@ -1148,6 +1154,44 @@ def create_solvable_puzzle() -> List[Bus]:
     return buses
 
 
+def create_complex_solvable_puzzle() -> List[Bus]:
+    """
+    Create a more complex solvable puzzle that requires clearing blocking buses.
+    
+    Configuration with blocking:
+      0 1 2 3 4 5
+    0 R R . O . E
+    1 . . . O . .
+    2 . . . . . .
+    3 . B B B . .
+    4 G . . . Y Y
+    5 G . . . . .
+    
+    Red bus at (0,0) needs to reach (0,4).
+    Orange bus at (0,3) blocks Red's path.
+    Orange can move down (has empty cells at row 2).
+    """
+    buses = [
+        # Red bus (horizontal, length 2) - starts on row 0, needs to reach (0,4)
+        Bus(BusColor.RED, 2, Orientation.HORIZONTAL, (0, 0)),
+        
+        # Orange bus (vertical, length 2) - BLOCKS Red's path at column 3
+        Bus(BusColor.ORANGE, 2, Orientation.VERTICAL, (0, 3)),
+        
+        # Green bus (vertical, length 2) - positioned lower, out of the way
+        Bus(BusColor.GREEN, 2, Orientation.VERTICAL, (4, 0)),
+        
+        # Blue bus (horizontal, length 3) - positioned on row 3, leaving space for Orange
+        Bus(BusColor.BLUE, 3, Orientation.HORIZONTAL, (3, 1)),
+        
+        # Yellow bus (horizontal, length 2) - positioned at right side
+        Bus(BusColor.YELLOW, 2, Orientation.HORIZONTAL, (4, 4)),
+    ]
+    
+    return buses
+    return buses
+
+
 def main():
     """Main execution function"""
     print("=" * 60)
@@ -1155,8 +1199,8 @@ def main():
     print("With Passenger Management System")
     print("=" * 60)
     
-    # Create solvable puzzle
-    buses = create_solvable_puzzle()
+    # Create complex solvable puzzle (with blocking buses)
+    buses = create_complex_solvable_puzzle()
     
     # Create enhanced CSP solver with passenger management
     csp = EnhancedBusEscapeCSP(buses, total_passengers=50)
