@@ -180,5 +180,175 @@ class TestConstants(unittest.TestCase):
         self.assertGreater(BusEscapeCSP.MAX_MOVES_PER_BUS, 0)
 
 
+class TestPassengerManagement(unittest.TestCase):
+    """Test passenger management system"""
+    
+    def test_passenger_creation(self):
+        """Test that passengers are created correctly"""
+        from bus_escape_csp import PassengerManager
+        pm = PassengerManager(50)
+        
+        # Check total passengers
+        self.assertEqual(len(pm.passengers), 50)
+        
+        # Check unique IDs
+        ids = [p.passenger_id for p in pm.passengers]
+        self.assertEqual(len(set(ids)), 50)
+        self.assertEqual(min(ids), 1)
+        self.assertEqual(max(ids), 50)
+    
+    def test_deterministic_distribution(self):
+        """Test that passenger distribution is deterministic"""
+        from bus_escape_csp import PassengerManager
+        
+        pm1 = PassengerManager(50)
+        pm2 = PassengerManager(50)
+        
+        dist1 = pm1.get_distribution_summary()
+        dist2 = pm2.get_distribution_summary()
+        
+        self.assertEqual(dist1, dist2)
+        self.assertEqual(sum(dist1.values()), 50)
+    
+    def test_hash_based_assignment(self):
+        """Test that hash-based assignment works correctly"""
+        from bus_escape_csp import PassengerManager, BusColor
+        
+        pm = PassengerManager(50)
+        
+        # Test specific passengers based on hash function
+        # ID=1: (1*7+13)%3 = 20%3 = 2 -> Group C (Green)
+        p1 = pm.passengers[0]
+        self.assertEqual(p1.passenger_id, 1)
+        self.assertEqual(p1.group, 'C')
+        self.assertEqual(p1.assigned_bus, BusColor.GREEN)
+        
+        # ID=2: (2*7+13)%3 = 27%3 = 0 -> Group A (Red)
+        p2 = pm.passengers[1]
+        self.assertEqual(p2.passenger_id, 2)
+        self.assertEqual(p2.group, 'A')
+        self.assertEqual(p2.assigned_bus, BusColor.RED)
+        
+        # ID=3: (3*7+13)%3 = 34%3 = 1 -> Group B (Yellow)
+        p3 = pm.passengers[2]
+        self.assertEqual(p3.passenger_id, 3)
+        self.assertEqual(p3.group, 'B')
+        self.assertEqual(p3.assigned_bus, BusColor.YELLOW)
+    
+    def test_deterministic_names(self):
+        """Test that names are generated deterministically"""
+        from bus_escape_csp import PassengerManager
+        
+        pm1 = PassengerManager(50)
+        pm2 = PassengerManager(50)
+        
+        # Check first 5 passengers have same names
+        for i in range(5):
+            self.assertEqual(pm1.passengers[i].name, pm2.passengers[i].name)
+    
+    def test_get_passengers_by_bus(self):
+        """Test filtering passengers by bus"""
+        from bus_escape_csp import PassengerManager, BusColor
+        
+        pm = PassengerManager(50)
+        
+        red_passengers = pm.get_passengers_by_bus(BusColor.RED)
+        yellow_passengers = pm.get_passengers_by_bus(BusColor.YELLOW)
+        green_passengers = pm.get_passengers_by_bus(BusColor.GREEN)
+        
+        # All should have correct bus assignment
+        for p in red_passengers:
+            self.assertEqual(p.assigned_bus, BusColor.RED)
+            self.assertEqual(p.group, 'A')
+        
+        for p in yellow_passengers:
+            self.assertEqual(p.assigned_bus, BusColor.YELLOW)
+            self.assertEqual(p.group, 'B')
+        
+        for p in green_passengers:
+            self.assertEqual(p.assigned_bus, BusColor.GREEN)
+            self.assertEqual(p.group, 'C')
+        
+        # Total should be 50
+        self.assertEqual(len(red_passengers) + len(yellow_passengers) + len(green_passengers), 50)
+
+
+class TestEnhancedSolver(unittest.TestCase):
+    """Test enhanced CSP solver with passenger management"""
+    
+    def test_enhanced_solver_initialization(self):
+        """Test that enhanced solver initializes correctly"""
+        from bus_escape_csp import EnhancedBusEscapeCSP, Bus, BusColor, Orientation
+        
+        buses = [
+            Bus(BusColor.RED, 2, Orientation.HORIZONTAL, (0, 0)),
+            Bus(BusColor.GREEN, 2, Orientation.VERTICAL, (2, 2)),
+        ]
+        
+        csp = EnhancedBusEscapeCSP(buses, total_passengers=50)
+        
+        # Check passenger manager is initialized
+        self.assertIsNotNone(csp.passenger_manager)
+        self.assertEqual(len(csp.passenger_manager.passengers), 50)
+    
+    def test_simple_solvable_puzzle(self):
+        """Test that enhanced solver can solve simple puzzle"""
+        from bus_escape_csp import create_solvable_puzzle, EnhancedBusEscapeCSP
+        
+        buses = create_solvable_puzzle()
+        csp = EnhancedBusEscapeCSP(buses, total_passengers=50)
+        
+        result = csp.solve_with_red_priority()
+        
+        # Should find solution
+        self.assertTrue(result)
+        self.assertTrue(csp.is_goal_state(csp.buses))
+    
+    def test_complex_puzzle_with_blocking(self):
+        """Test that enhanced solver can solve puzzle with blocking buses"""
+        from bus_escape_csp import create_complex_solvable_puzzle, EnhancedBusEscapeCSP
+        
+        buses = create_complex_solvable_puzzle()
+        csp = EnhancedBusEscapeCSP(buses, total_passengers=50)
+        
+        result = csp.solve_with_red_priority()
+        
+        # Should find solution
+        self.assertTrue(result)
+        self.assertTrue(csp.is_goal_state(csp.buses))
+        
+        # Should have moved buses (more than just Red)
+        self.assertGreater(len(csp.move_log), 1)
+    
+    def test_all_constraints_maintained(self):
+        """Test that all constraints are maintained during enhanced solving"""
+        from bus_escape_csp import create_complex_solvable_puzzle, EnhancedBusEscapeCSP
+        
+        buses = create_complex_solvable_puzzle()
+        csp = EnhancedBusEscapeCSP(buses, total_passengers=50)
+        
+        # Save initial state
+        initial_buses = [b.copy() for b in buses]
+        
+        # Solve
+        csp.solve_with_red_priority()
+        
+        # Verify all buses are still within bounds
+        for bus in csp.buses:
+            for cell in bus.get_occupied_cells():
+                row, col = cell
+                self.assertGreaterEqual(row, 0)
+                self.assertLess(row, 6)
+                self.assertGreaterEqual(col, 0)
+                self.assertLess(col, 6)
+        
+        # Verify no collisions in final state
+        all_cells = []
+        for bus in csp.buses:
+            for cell in bus.get_occupied_cells():
+                self.assertNotIn(cell, all_cells, "Collision detected in final state")
+                all_cells.append(cell)
+
+
 if __name__ == '__main__':
     unittest.main()
