@@ -734,7 +734,10 @@ class BusEscapeCSP:
                     
                     # Check if this is the final move to exit
                     if bus.color == BusColor.RED and self.is_goal_state(current_state):
-                        print(f"Move {move_count}: {bus.color.value} Bus reaches exit at {self.EXIT_POSITION}")
+                        # Calculate rightmost cell position (the actual exit cell)
+                        rightmost_col = bus.position[1] + bus.length - 1
+                        exit_cell = (bus.position[0], rightmost_col)
+                        print(f"Move {move_count}: {bus.color.value} Bus reaches exit at {exit_cell}")
                     else:
                         print(f"Move {move_count}: {bus.color.value} Bus moves from {from_pos} to {to_pos}")
                     
@@ -800,7 +803,7 @@ class BusEscapeCSP:
 
 
 class EnhancedBusEscapeCSP(BusEscapeCSP):
-    """Enhanced CSP solver with passenger management and Red bus priority."""
+    """Enhanced CSP solver with passenger management using pure BFS approach."""
     
     def __init__(self, buses: List[Bus], total_passengers: int = 50):
         """
@@ -812,268 +815,20 @@ class EnhancedBusEscapeCSP(BusEscapeCSP):
         """
         super().__init__(buses)
         self.passenger_manager = PassengerManager(total_passengers)
-        self.move_log = []  # Track all moves with rationale
-    
-    def get_blocking_buses_for_red(self) -> List[Bus]:
-        """
-        Identify which buses block Red bus's path to exit.
-        
-        Returns:
-            List of buses blocking Red's path
-        """
-        red_bus = self.bus_dict[BusColor.RED]
-        current_row, current_col = red_bus.position
-        target_row = self.EXIT_POSITION[0]
-        
-        blocking_buses = []
-        
-        # Red bus needs to move vertically up to row 0, then horizontally right to col 5
-        # Check vertical path first
-        if current_row > target_row:
-            # Need to move up - check if path is clear
-            for row in range(target_row, current_row):
-                cell = (row, current_col)
-                for bus in self.buses:
-                    if bus.color != BusColor.RED and cell in bus.get_occupied_cells():
-                        if bus not in blocking_buses:
-                            blocking_buses.append(bus)
-        
-        # Check horizontal path on target row
-        rightmost_needed = self.EXIT_POSITION[1]
-        if current_row == target_row:
-            current_rightmost = current_col + red_bus.length - 1
-            if current_rightmost < rightmost_needed:
-                # Need to move right
-                for col in range(current_rightmost + 1, rightmost_needed + 1):
-                    cell = (target_row, col)
-                    for bus in self.buses:
-                        if bus.color != BusColor.RED and cell in bus.get_occupied_cells():
-                            if bus not in blocking_buses:
-                                blocking_buses.append(bus)
-        
-        return blocking_buses
-    
-    def get_next_target_cell_for_red(self) -> Optional[Tuple[int, int]]:
-        """
-        Get the next cell Red bus needs to move to.
-        
-        Returns:
-            Next target position for Red bus, or None if already at goal
-        """
-        red_bus = self.bus_dict[BusColor.RED]
-        current_row, current_col = red_bus.position
-        target_row = self.EXIT_POSITION[0]
-        rightmost_needed = self.EXIT_POSITION[1]
-        current_rightmost = current_col + red_bus.length - 1
-        
-        # Check if already at goal
-        if current_row == target_row and current_rightmost == rightmost_needed:
-            return None
-        
-        # Priority: First get to row 0, then move right
-        if current_row > target_row:
-            # Move up one cell
-            return (current_row - 1, current_col)
-        elif current_row < target_row:
-            # Move down one cell (unlikely but handle it)
-            return (current_row + 1, current_col)
-        else:
-            # On target row, move right
-            if current_rightmost < rightmost_needed:
-                return (current_row, current_col + 1)
-        
-        return None
-    
-    def print_constraint_verification(self, bus: Bus, old_pos: Tuple[int, int], 
-                                     new_pos: Tuple[int, int], move_num: int) -> None:
-        """
-        Print detailed constraint checking for each move.
-        
-        Args:
-            bus: Bus being moved
-            old_pos: Original position
-            new_pos: New position
-            move_num: Move number
-        """
-        print(f"\nMove {move_num}: {bus.color.value} Bus moves from {old_pos} to {new_pos}")
-        
-        # Check movement direction
-        if bus.orientation == Orientation.HORIZONTAL:
-            if new_pos[0] == old_pos[0] and abs(new_pos[1] - old_pos[1]) == 1:
-                direction = "right" if new_pos[1] > old_pos[1] else "left"
-                print(f"  ✓ Movement Direction: Horizontal bus moving {direction}")
-            else:
-                print(f"  ✗ Movement Direction: Invalid move for horizontal bus")
-        else:
-            if new_pos[1] == old_pos[1] and abs(new_pos[0] - old_pos[0]) == 1:
-                direction = "down" if new_pos[0] > old_pos[0] else "up"
-                print(f"  ✓ Movement Direction: Vertical bus moving {direction}")
-            else:
-                print(f"  ✗ Movement Direction: Invalid move for vertical bus")
-        
-        # Check boundary constraint
-        temp_bus = bus.copy()
-        temp_bus.position = new_pos
-        cells = temp_bus.get_occupied_cells()
-        in_bounds = all(0 <= r < self.GRID_SIZE and 0 <= c < self.GRID_SIZE for r, c in cells)
-        print(f"  ✓ Boundary Check: All cells in [0,{self.GRID_SIZE})" if in_bounds else "  ✗ Boundary Check: Out of bounds")
-        
-        # Check collision constraint
-        occupied_by_others = self.get_all_occupied_cells(self.buses, exclude_bus=bus.color)
-        no_collision = not (cells & occupied_by_others)
-        print(f"  ✓ Collision Check: No overlap with other buses" if no_collision else "  ✗ Collision Check: Collision detected")
-        
-        # Check blockage constraint (one cell movement)
-        adjacent = (abs(new_pos[0] - old_pos[0]) + abs(new_pos[1] - old_pos[1])) == 1
-        print(f"  ✓ Blockage Check: Adjacent move (one cell)" if adjacent else "  ✗ Blockage Check: Not adjacent")
-        
-        if in_bounds and no_collision and adjacent:
-            print(f"  ✓ All constraints satisfied")
-        else:
-            print(f"  ✗ Some constraints violated")
-    
-    def solve_with_red_priority(self) -> bool:
-        """
-        Enhanced solver prioritizing Red Bus movement.
-        
-        Strategy:
-        1. Check if Red bus can move directly toward exit
-        2. If blocked, identify and move blocking buses minimally
-        3. Move Red bus one step closer
-        4. Repeat until Red reaches exit
-        
-        Returns:
-            True if solution found, False otherwise
-        """
-        self.start_time = time.time()
-        move_count = 0
-        max_moves = 100  # Safety limit
-        
-        print("\n" + "=" * 60)
-        print("ENHANCED SOLVER: RED BUS PRIORITY MODE")
-        print("=" * 60)
-        
-        # Show passenger distribution
-        self.passenger_manager.print_passenger_distribution()
-        
-        print("\nInitial State:")
-        print(self.visualize_grid(self.buses))
-        
-        while move_count < max_moves:
-            # Check if goal reached
-            if self.is_goal_state(self.buses):
-                print("\n" + "=" * 60)
-                print(f"MISSION ACCOMPLISHED: Red Bus reached exit at {self.EXIT_POSITION}")
-                print("=" * 60)
-                return True
-            
-            # Get next target for Red bus
-            next_target = self.get_next_target_cell_for_red()
-            if next_target is None:
-                break
-            
-            red_bus = self.bus_dict[BusColor.RED]
-            
-            # Check if Red can move to next target
-            if self.is_valid_position(self.buses, BusColor.RED, next_target):
-                # Red can move
-                old_pos = red_bus.position
-                red_bus.position = next_target
-                move_count += 1
-                
-                self.print_constraint_verification(red_bus, old_pos, next_target, move_count)
-                print("\nGrid after Move " + str(move_count) + ":")
-                print(self.visualize_grid(self.buses))
-                
-                self.move_log.append({
-                    'move_num': move_count,
-                    'bus': BusColor.RED,
-                    'from': old_pos,
-                    'to': next_target,
-                    'reason': 'Red bus moving toward exit'
-                })
-            else:
-                # Red is blocked - identify and clear blocking buses
-                print(f"\nPath Analysis:")
-                print(f"  Red bus at {red_bus.position} needs to reach {self.EXIT_POSITION}")
-                print(f"  Next required position: {next_target}")
-                
-                # Find which bus(es) would collide if Red moves to next_target
-                temp_red = red_bus.copy()
-                temp_red.position = next_target
-                new_red_cells = temp_red.get_occupied_cells()
-                
-                blocking_buses = []
-                for bus in self.buses:
-                    if bus.color != BusColor.RED:
-                        bus_cells = bus.get_occupied_cells()
-                        if new_red_cells & bus_cells:  # Check for collision
-                            blocking_buses.append(bus)
-                            print(f"  Blocking bus: {bus.color.value} at {bus.position} [cells: {bus_cells}]")
-                
-                if not blocking_buses:
-                    print("  Error: No blocking bus found but move invalid")
-                    return False
-                
-                # Try to move blocking bus
-                moved = False
-                for blocking_bus in blocking_buses:
-                    legal_moves = self.get_legal_moves(self.buses, blocking_bus.color)
-                    
-                    # Try each legal move to see if it clears the path
-                    for move in legal_moves:
-                        temp_buses = [b.copy() for b in self.buses]
-                        temp_blocking = next(b for b in temp_buses if b.color == blocking_bus.color)
-                        temp_blocking.position = move
-                        
-                        # Check if this clears the path for Red
-                        if self.is_valid_position(temp_buses, BusColor.RED, next_target):
-                            # This move works!
-                            old_pos = blocking_bus.position
-                            blocking_bus.position = move
-                            move_count += 1
-                            
-                            print(f"\nAction: Move {blocking_bus.color.value} bus to clear path")
-                            print(f"Reason: {blocking_bus.color.value} blocks Red's path to {next_target}")
-                            print(f"Solution: Move {blocking_bus.color.value} from {old_pos} to {move}")
-                            
-                            self.print_constraint_verification(blocking_bus, old_pos, move, move_count)
-                            print("\nGrid after Move " + str(move_count) + ":")
-                            print(self.visualize_grid(self.buses))
-                            
-                            self.move_log.append({
-                                'move_num': move_count,
-                                'bus': blocking_bus.color,
-                                'from': old_pos,
-                                'to': move,
-                                'reason': f'Clear path for Red bus to reach {next_target}'
-                            })
-                            
-                            moved = True
-                            break
-                    
-                    if moved:
-                        break
-                
-                if not moved:
-                    print(f"  Could not find way to clear blocking bus")
-                    return False
-        
-        return False
     
     def print_enhanced_solution(self) -> None:
-        """Print solution with passenger manifest."""
-        elapsed_time = time.time() - self.start_time
+        """Print solution with passenger manifest and CSP statistics."""
+        # First print standard CSP solution output
+        self.print_solution()
         
-        # Print passenger manifest
-        reached_bus = BusColor.RED if self.is_goal_state(self.buses) else None
+        # Then add passenger manifest
+        if self.solution_path:
+            final_buses = self.solution_path[-1]
+            reached_bus = BusColor.RED if self.is_goal_state(final_buses) else None
+        else:
+            reached_bus = None
+        
         self.passenger_manager.print_passenger_manifest(reached_bus)
-        
-        print(f"\nTotal moves: {len(self.move_log)}")
-        print(f"Time elapsed: {elapsed_time:.4f} seconds")
-        print("\n✓ Solution successfully found!" if reached_bus else "\n✗ No solution found")
-        if reached_bus:
-            print(f"✓ Red Bus reached exit at position {self.EXIT_POSITION}")
 
 
 def create_example_puzzle() -> List[Bus]:
@@ -1193,21 +948,27 @@ def create_complex_solvable_puzzle() -> List[Bus]:
 def main():
     """Main execution function"""
     print("=" * 60)
-    print("BUS ESCAPE PUZZLE - ENHANCED CSP SOLVER")
+    print("BUS ESCAPE PUZZLE - CSP SOLVER")
+    print("Using Pure BFS with MRV and LCV Heuristics")
     print("With Passenger Management System")
     print("=" * 60)
     
-    # Create complex solvable puzzle (with blocking buses)
+    # Create complex solvable puzzle
     buses = create_complex_solvable_puzzle()
     
     # Create enhanced CSP solver with passenger management
     csp = EnhancedBusEscapeCSP(buses, total_passengers=50)
     
-    # Solve puzzle with Red bus priority
-    result = csp.solve_with_red_priority()
+    # Solve puzzle using pure BFS with MRV and LCV heuristics
+    result = csp.solve_bfs()
     
     # Display enhanced solution with passenger manifest
     csp.print_enhanced_solution()
+    
+    if result:
+        print("\n✓ Solution found using pure CSP approach!")
+    else:
+        print("\n✗ No solution found within search limit.")
 
 
 def main_original():
@@ -1229,8 +990,12 @@ def main_original():
     csp.print_solution()
     
     if result:
+        red_bus = next(b for b in csp.solution_path[-1] if b.color == BusColor.RED)
+        # Calculate rightmost cell position (the actual exit cell)
+        rightmost_col = red_bus.position[1] + red_bus.length - 1
+        exit_cell = (red_bus.position[0], rightmost_col)
         print("\n✓ Solution successfully found!")
-        print(f"✓ Red Bus reached exit at position {BusEscapeCSP.EXIT_POSITION}")
+        print(f"✓ Red Bus reached exit at position {exit_cell}")
     else:
         print("\n✗ No solution found within search limit.")
 

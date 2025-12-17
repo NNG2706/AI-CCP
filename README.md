@@ -34,9 +34,9 @@ In the Bus Escape puzzle:
 ### Algorithm
 - **Search Method**: Breadth-First Search (BFS) for optimal solution path
 - **MRV Heuristic**: Minimum Remaining Values for variable selection
-- **LCV Heuristic**: Least Constraining Value for value ordering
+- **LCV Heuristic**: Least Constraining Value for value ordering (with goal-directed enhancement for Red Bus)
 - **State Space Pruning**: Visited state tracking to avoid cycles
-- **Goal-Directed Search**: Special prioritization for Red Bus moves towards exit
+- **Pure CSP Approach**: No imperative path-clearing logic - solutions discovered through constraint-based search
 
 ### Key Components
 
