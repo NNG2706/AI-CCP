@@ -292,36 +292,36 @@ class TestEnhancedSolver(unittest.TestCase):
         self.assertEqual(len(csp.passenger_manager.passengers), 50)
     
     def test_simple_solvable_puzzle(self):
-        """Test that enhanced solver can solve simple puzzle"""
+        """Test that enhanced solver can solve simple puzzle using pure BFS"""
         from bus_escape_csp import create_solvable_puzzle, EnhancedBusEscapeCSP
         
         buses = create_solvable_puzzle()
         csp = EnhancedBusEscapeCSP(buses, total_passengers=50)
         
-        result = csp.solve_with_red_priority()
+        result = csp.solve_bfs()
         
         # Should find solution
         self.assertTrue(result)
-        self.assertTrue(csp.is_goal_state(csp.buses))
+        self.assertTrue(csp.is_goal_state(csp.solution_path[-1]))
     
     def test_complex_puzzle_with_blocking(self):
-        """Test that enhanced solver can solve puzzle with blocking buses"""
+        """Test that enhanced solver can solve puzzle with blocking buses using pure BFS"""
         from bus_escape_csp import create_complex_solvable_puzzle, EnhancedBusEscapeCSP
         
         buses = create_complex_solvable_puzzle()
         csp = EnhancedBusEscapeCSP(buses, total_passengers=50)
         
-        result = csp.solve_with_red_priority()
+        result = csp.solve_bfs()
         
         # Should find solution
         self.assertTrue(result)
-        self.assertTrue(csp.is_goal_state(csp.buses))
+        self.assertTrue(csp.is_goal_state(csp.solution_path[-1]))
         
-        # Should have moved buses (more than just Red)
-        self.assertGreater(len(csp.move_log), 1)
+        # Should have solution path with multiple moves
+        self.assertGreater(len(csp.solution_path), 1)
     
     def test_all_constraints_maintained(self):
-        """Test that all constraints are maintained during enhanced solving"""
+        """Test that all constraints are maintained during pure BFS solving"""
         from bus_escape_csp import create_complex_solvable_puzzle, EnhancedBusEscapeCSP
         
         buses = create_complex_solvable_puzzle()
@@ -330,11 +330,15 @@ class TestEnhancedSolver(unittest.TestCase):
         # Save initial state
         initial_buses = [b.copy() for b in buses]
         
-        # Solve
-        csp.solve_with_red_priority()
+        # Solve using pure BFS
+        result = csp.solve_bfs()
+        self.assertTrue(result)
+        
+        # Get final state from solution path
+        final_buses = csp.solution_path[-1]
         
         # Verify all buses are still within bounds
-        for bus in csp.buses:
+        for bus in final_buses:
             for cell in bus.get_occupied_cells():
                 row, col = cell
                 self.assertGreaterEqual(row, 0)
@@ -344,7 +348,7 @@ class TestEnhancedSolver(unittest.TestCase):
         
         # Verify no collisions in final state
         all_cells = []
-        for bus in csp.buses:
+        for bus in final_buses:
             for cell in bus.get_occupied_cells():
                 self.assertNotIn(cell, all_cells, "Collision detected in final state")
                 all_cells.append(cell)
